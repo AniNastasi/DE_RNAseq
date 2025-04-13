@@ -1,31 +1,65 @@
+
 library(DESeq2)
-library(tidyverse)
+library(dplyr)
 
-counts <- read.csv("D:/Research/GEO/GSE146853/filtered_counts.csv", row.names = 1)
-metadata <- read.csv("D:/Research/GEO/GSE146853/metadata.csv", sep = "\t")
-head(counts)
-head(metadata)
+counts <- read.csv("D:/Research/GEO/GSE146853/filtered_counts.csv", check.names = FALSE, row.names = 1)
+metadata <- read.csv("D:/Research/GEO/GSE146853/filtered_metadata.csv", check.names = FALSE)
+colnames(metadata) <- make.names(colnames(metadata), unique = TRUE)
+metadata <- metadata[, c("Disease", "Sample_ID")]
+metadata$Patient_ID <- sub("\\.\\d+$", "", metadata$Sample_ID)
 
-patients <- metadata %>% filter(Disease != "Healthy" & Disease != "NA")
-controls <- metadata %>% filter(Disease == "Healthy")
+# Identify patients with exactly 2 replicates
+replicated <- metadata %>%
+  group_by(Patient_ID) %>%
+  tally() %>%
+  filter(n == 2) %>%
+  pull(Patient_ID)
 
-for (i in 1:nrow(patients)) {
-  patient_sample <- patients$SampleName[i]
-  patient_id <- gsub("[^A-Za-z0-9]", "_", patient_sample)
-  subset_samples <- c(patient_sample, controls$SampleName)
+# Filter metadata
+metadata_filtered <- metadata %>%
+  filter(Patient_ID %in% replicated | Disease == "Healthy")
+
+# Output folder
+outdir <- "D:/Research/GEO/GSE146853/Results/DESeq2"
+dir.create(outdir, showWarnings = FALSE)
+
+# Loop through each patient (with replicates)
+patients_to_test <- metadata_filtered %>%
+  filter(Disease != "Healthy") %>%
+  pull(Patient_ID) %>%
+  unique()
+
+for (patient_id in patients_to_test) {
+  disease <- metadata_filtered %>%
+    filter(Patient_ID == patient_id) %>%
+    pull(Disease) %>%
+    unique()
   
-  sub_counts <- counts[, subset_samples]
-  sub_meta <- metadata %>% filter(SampleName %in% subset_samples) %>%
-    mutate(group = ifelse(SampleName == patient_sample, "Patient", "Control"))
+  # Select samples: 2 for patient + all healthy
+  selected_samples <- metadata_filtered %>%
+    filter(Disease == "Healthy" | Patient_ID == patient_id)
   
-  rownames(sub_meta) <- sub_meta$SampleName
-  sub_meta <- sub_meta[colnames(sub_counts), ]  # Fix ordering
+  sample_ids <- selected_samples$Sample_ID
+  cond <- ifelse(selected_samples$Disease == "Healthy", "Healthy", disease)
+  condition <- factor(cond, levels = c("Healthy", disease))
   
-  dds <- DESeqDataSetFromMatrix(countData = sub_counts, colData = sub_meta, design = ~ group)
+  # Build colData
+  coldata <- data.frame(row.names = sample_ids,
+                        Condition = condition)
+  
+  # Subset count matrix
+  counts_sub <- counts[, sample_ids]
+  
+  # Run DESeq2
+  dds <- DESeqDataSetFromMatrix(countData = round(counts_sub),
+                                colData = coldata,
+                                design = ~ Condition)
   dds <- DESeq(dds)
   res <- results(dds)
   
-  write.csv(as.data.frame(res), file = paste0("D:/Research/GEO/GSE146853/Results/deseq2_", patient_id, ".csv"))
+  # Save results
+  out_file <- file.path(outdir, paste0("DEG_", patient_id, "_", disease, "_vs_Healthy.csv"))
+  write.csv(as.data.frame(res), out_file)
+  
+  cat("DESeq2 done:", patient_id, "-", disease, "\n")
 }
-
-cat("DESeq2 patient-wise comparisons complete.\n")
