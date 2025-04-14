@@ -1,15 +1,12 @@
 library(DESeq2)
 library(dplyr)
 
+# Paths
 counts <- read.csv("D:/Research/GEO/GSE146853/filtered_counts.csv", check.names = FALSE, row.names = 1)
 metadata <- read.csv("D:/Research/GEO/GSE146853/filtered_metadata.csv", check.names = FALSE, row.names = 1)
-head(counts)
-head(metadata)
-
-
-# Output folder
 outdir <- "D:/Research/GEO/GSE146853/Results/DESeq2"
 dir.create(outdir, showWarnings = FALSE)
+
 
 # Loop through each patient (with replicates)
 patients_to_test <- metadata %>%
