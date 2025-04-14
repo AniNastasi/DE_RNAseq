@@ -1,28 +1,61 @@
 library(edgeR)
-library(tidyverse)
+library(dplyr)
+library(readr)
 
-counts <- read.csv("D:/Research/STW5/GEO/Results/filtered_counts.csv", row.names = 1)
-metadata <- read.csv("D:/Research/STW5/GEO/metadata.csv", sep = "\t")
+# Paths
+counts <- read.csv("D:/Research/GEO/GSE146853/filtered_counts.csv", check.names = FALSE, row.names = 1)
+metadata <- read.csv("D:/Research/GEO/GSE146853/filtered_metadata.csv", check.names = FALSE, row.names = 1)
+outdir <- "D:/Research/GEO/GSE146853/Results/EdgeR"
+dir.create(outdir, showWarnings = FALSE)
+head(counts)
+head(metadata)
 
-patients <- metadata %>% filter(Disease != "Healthy" & Disease != "NA")
-controls <- metadata %>% filter(Disease == "Healthy")
+# Loop through each patient (with replicates)
+patients_to_test <- metadata %>%
+  filter(Disease != "Healthy") %>%
+  pull(Patient_ID) %>%
+  unique()
+patients_to_test
 
-for (i in 1:nrow(patients)) {
-  patient_sample <- patients$SampleName[i]
-  patient_id <- gsub("[^A-Za-z0-9]", "_", patient_sample)
-  subset_samples <- c(patient_sample, controls$SampleName)
+for (patient_id in patients_to_test) {
+  # Get disease label
+  disease <- metadata %>%
+    filter(Patient_ID == patient_id) %>%
+    pull(Disease) %>%
+    unique()
   
-  sub_counts <- counts[, subset_samples]
-  sub_meta <- metadata %>% filter(SampleName %in% subset_samples) %>%
-    mutate(group = ifelse(SampleName == patient_sample, "Patient", "Control"))
+  # Select 2 patient replicates + all healthy samples
+  selected_metadata <- metadata %>%
+    filter(Patient_ID == patient_id | Disease == "Healthy")
   
-  dge <- DGEList(counts = sub_counts, group = sub_meta$group)
+  sample_ids <- selected_metadata$Sample_ID
+  condition <- ifelse(selected_metadata$Disease == "Healthy", "Healthy", disease)
+  group <- factor(condition, levels = c("Healthy", disease))
+  
+  # Subset count data
+  counts_sub <- counts[, sample_ids]
+  
+  # edgeR: create DGEList
+  dge <- DGEList(counts = counts_sub, group = group)
   dge <- calcNormFactors(dge)
-  dge <- estimateDisp(dge)
-  et <- exactTest(dge)
-  res <- topTags(et, n = nrow(sub_counts))
   
-  write.csv(res, file = paste0("D:/Research/STW5/GEO/Results/edgeR_", patient_id, ".csv"))
+  # Filter lowly expressed genes (again, just in case)
+  keep <- filterByExpr(dge, group = dge$samples$group)
+  dge <- dge[keep, , keep.lib.sizes = FALSE]
+  
+  # Design matrix and model
+  design <- model.matrix(~ group)
+  dge <- estimateDisp(dge, design)
+  fit <- glmQLFit(dge, design)
+  qlf <- glmQLFTest(fit, coef = 2)  # coef = 2: disease vs Healthy
+  
+  # Extract and save top DEGs
+  results <- topTags(qlf, n = Inf)$table
+  results <- tibble::rownames_to_column(results, var = "GeneID")
+  
+  # Output file
+  out_file <- file.path(outdir, paste0("DEG_", patient_id, "_", disease, "_vs_Healthy_edgeR.csv"))
+  write_csv(results, out_file)
+  
+  cat("edgeR done:", patient_id, "-", disease, "\n")
 }
-
-cat("edgeR patient-wise comparisons complete.\n")
