@@ -13,9 +13,11 @@ counts_file <- file.path(base_path, "raw_counts.csv")
 metadata_file <- file.path(base_path, "metadata.csv")
 filtered_counts_file <- file.path(base_path, "filtered_counts.csv")
 filtered_metadata_file <- file.path(base_path, "filtered_metadata.csv")
-results_path <- file.path(base_path, "Results")
+results_path <- file.path(base_path, "Results", "samples_with_replications")
 out_paths <- list(DESeq2 = "DESeq2", EdgeR = "EdgeR", Limma = "limma", Merged = "Merged")
-walk(out_paths, ~ dir.create(file.path(results_path, .x), showWarnings = FALSE))
+
+walk(out_paths, ~ dir.create(file.path(results_path, .x), recursive = TRUE, showWarnings = FALSE))
+
 
 # === Preprocess counts and metadata ===
 # Metadata
@@ -126,23 +128,24 @@ merge_and_filter <- function(file_path) {
   
   deseq2 <- read_csv(file_path, show_col_types = FALSE) %>%
     select(GeneID = 1, logFC = log2FoldChange, `P-value` = pvalue) %>%
-    filter(`P-value` < 0.05) %>%
     mutate(Method = "DESeq2")
   
   edger <- read_csv(edge_file, show_col_types = FALSE) %>%
     select(GeneID, logFC, `P-value` = PValue) %>%
-    filter(`P-value` < 0.05) %>%
     mutate(Method = "edgeR")
   
   limma <- read_csv(limma_file, show_col_types = FALSE) %>%
     select(GeneID, logFC, `P-value` = `P.Value`) %>%
-    filter(`P-value` < 0.05) %>%
     mutate(Method = "limma_voom")
   
-  common <- Reduce(intersect, list(deseq2$GeneID, edger$GeneID, limma$GeneID))
+  all_data <- bind_rows(deseq2, edger, limma)
   
-  bind_rows(deseq2, edger, limma) %>%
-    filter(GeneID %in% common) %>%
+  filtered_data <- all_data %>%
+    group_by(GeneID) %>%
+    filter(any(`P-value` < 0.05)) %>%
+    ungroup()
+  
+  filtered_data %>%
     mutate(Patient = patient_id, Disease = disease) %>%
     select(GeneID, Patient, Disease, Method, logFC, `P-value`)
 }
