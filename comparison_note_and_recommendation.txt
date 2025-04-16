@@ -1,0 +1,19 @@
+From the correlation analysis (using Pearson correlation) of logFC values between different methods, the correlation was consistently high across all comparisons. Specifically, the correlation between DESeq2 and edgeR was 0.98, between edgeR and limma+voom it was 0.93, and between DESeq2 and limma+voom it was 0.89. These results indicate that all methods produce similar logFC values.
+
+Spearman correlation, a rank-based measure, evaluates how similarly genes are ordered based on their statistical significance (with lower p-values ranked higher), yielded the following results: 0.86 for DESeq2 vs. edgeR, 0.68 for edgeR vs. limma+voom, and 0.44 for DESeq2 vs. limma+voom. These results suggest a strong similarity in gene ranking between DESeq2 and edgeR, while limma+voom shows less consistency with the other two methods.
+
+Jaccard similarity compares the top 100 most significant genes, ranked by p-value, for each method. The similarity between DESeq2 and edgeR was 0.30, between edgeR and limma+voom was 0.40, and between DESeq2 and limma+voom was 0.20. This analysis shows that edgeR and limma+voom shared the highest number of top genes, with a 40% overlap.
+
+The Venn diagram analysis of significantly regulated genes revealed that DESeq2 identified 18,525 significant genes, edgeR identified 17,522, and limma+voom identified 17,079. Among these, 1,007 genes were uniquely identified by DESeq2, 62 genes were unique to edgeR, and 849 genes were unique to limma+voom. The highest overlap was found between DESeq2 and edgeR, with 1,653 shared significant genes, indicating strong coherence between these two methods.
+
+It is also important to note that DESeq2 requires at least two replicates per group to estimate dispersion properly.
+
+In summary, when comparing various criteria (see below), edgeR demonstrated the most reliable and consistent performance for this dataset. Therefore, it is recommended to use edgeR for future differential expression analyses.
+
+parameter	DESeq2	edgeR	limma+voom
+no replicates in samples	-	+	+
+Pearson correlation (logFC)	+	+	+
+Spearman correlation (ranking)	+	+	-
+Jaccard similarity (top genes)	-	+	+
+Venn diagram overlap/unique	-	+	-
+
